@@ -345,15 +345,18 @@ async function saveResultsCloud(results){
   var payload={data:results,updated:new Date().toLocaleString("pt-BR")};
 
   var shaRes=await fetch(GH_API_URL,{
-    headers:{"Authorization":"token "+GH_TOKEN,"Accept":"application/vnd.github+json"}
+    headers:{"Authorization":"Bearer "+GH_TOKEN,"Accept":"application/vnd.github+json"}
   });
-  if(!shaRes.ok) throw new Error("Falha ao obter SHA atual do results.json");
+  if(!shaRes.ok){
+    var shaErr=await shaRes.json().catch(function(){return{};});
+    throw new Error("GET sha "+shaRes.status+": "+(shaErr.message||shaRes.statusText));
+  }
   var shaData=await shaRes.json();
 
   var putRes=await fetch(GH_API_URL,{
     method:"PUT",
     headers:{
-      "Authorization":"token "+GH_TOKEN,
+      "Authorization":"Bearer "+GH_TOKEN,
       "Accept":"application/vnd.github+json",
       "Content-Type":"application/json"
     },
@@ -364,7 +367,10 @@ async function saveResultsCloud(results){
       branch:GH_BRANCH
     })
   });
-  if(!putRes.ok) throw new Error("Falha ao salvar results.json via GitHub API");
+  if(!putRes.ok){
+    var putErr=await putRes.json().catch(function(){return{};});
+    throw new Error("PUT "+putRes.status+": "+(putErr.message||putRes.statusText));
+  }
 
   cachedResults=payload;
 }
@@ -379,17 +385,12 @@ function calcScores(data){
   MODALITIES.forEach(function(m){
     var r=data[m.id];
     if(!r)return;
-    if(m.tipo==="col"){
-      // r = {pos: 1|2|3|4}
-      var pos=r.pos;
-      if(pos&&pos>=1&&pos<=4) scores["6E"]+=PTS_COL[pos];
-    } else {
-      // r = {p1:"6A",p2:"6E",p3:"6C",p4:"6B"}
-      [1,2,3,4].forEach(function(i){
-        var turma=r["p"+i];
-        if(turma&&scores[turma]!==undefined) scores[turma]+=PTS_IND[i];
-      });
-    }
+    // r = {p1:"6A",p2:"6E",p3:"6C",p4:"6B"} → turma que ficou em cada colocação
+    var PTS=m.tipo==="col"?PTS_COL:PTS_IND;
+    [1,2,3,4].forEach(function(i){
+      var turma=r["p"+i];
+      if(turma&&scores[turma]!==undefined) scores[turma]+=PTS[i];
+    });
   });
   return scores;
 }
@@ -442,28 +443,19 @@ function renderClassificacao(results){
   MODALITIES.forEach(function(m){
     var r=data[m.id];
     html+='<div class="mb-row"><span class="mb-mod">'+m.name+'</span>';
-    if(m.tipo==="col"){
-      if(r&&r.pos){
-        var pts=PTS_COL[r.pos];
-        html+='<div class="mb-chips"><span class="mb-chip '+chipCls[r.pos]+'">'+posLabel[r.pos]+' &bull; +'+pts+'</span></div>';
-      } else {
-        html+='<span class="mb-pending">pendente</span>';
-      }
+    var PTS=m.tipo==="col"?PTS_COL:PTS_IND;
+    if(r){
+      var chips="";
+      [1,2,3,4].forEach(function(i){
+        if(r["p"+i]==="6E"){
+          var pts=PTS[i];
+          chips+='<span class="mb-chip '+chipCls[i]+'">'+posLabel[i]+' &bull; +'+pts+'</span>';
+        }
+      });
+      if(chips) html+='<div class="mb-chips">'+chips+'</div>';
+      else html+='<span class="mb-pending">sem pódio</span>';
     } else {
-      // show 6E positions in this individual event
-      if(r){
-        var chips="";
-        [1,2,3,4].forEach(function(i){
-          if(r["p"+i]==="6E"){
-            var pts=PTS_IND[i];
-            chips+='<span class="mb-chip '+chipCls[i]+'">'+posLabel[i]+' &bull; +'+pts+'</span>';
-          }
-        });
-        if(chips) html+='<div class="mb-chips">'+chips+'</div>';
-        else html+='<span class="mb-pending">sem pódio</span>';
-      } else {
-        html+='<span class="mb-pending">pendente</span>';
-      }
+      html+='<span class="mb-pending">pendente</span>';
     }
     html+='</div>';
   });
@@ -495,34 +487,21 @@ function buildAdminPanel(data){
     html+='<div class="admin-section"><div class="as-title">'+g+'</div>';
     groups[g].forEach(function(m){
       var r=data[m.id]||{};
-      if(m.tipo==="col"){
-        // simple select: posição do 6E
-        var pos=r.pos||0;
-        html+='<div class="col-row">';
-        html+='<span class="col-mod-name">'+m.name+'</span>';
-        html+='<select class="col-select" id="col_'+m.id+'">';
-        html+='<option value="0">- pos. 6E -</option>';
-        [1,2,3,4].forEach(function(p){
-          html+='<option value="'+p+'"'+(pos===p?' selected':'')+'>'+p+'&#186; lugar</option>';
-        });
+      // 4 dropdowns: qual turma ficou em 1º, 2º, 3º e 4º lugar
+      html+='<div class="ind-row">';
+      html+='<div class="ind-mod-name">'+m.name+'</div>';
+      html+='<div class="ind-places">';
+      var lblCls=["l1","l2","l3","l4"];
+      [1,2,3,4].forEach(function(i){
+        var val=r["p"+i]||"";
+        html+='<div class="place-field">';
+        html+='<span class="place-label '+lblCls[i-1]+'">'+i+'&#186;</span>';
+        html+='<select class="place-select" id="ind_'+m.id+'_p'+i+'">';
+        html+='<option value="">-</option>';
+        html+=TURMAS.map(function(t){return '<option value="'+t+'"'+(val===t?' selected':'')+'>'+t+'</option>';}).join("");
         html+='</select></div>';
-      } else {
-        // 4 dropdowns: who got 1st, 2nd, 3rd, 4th
-        html+='<div class="ind-row">';
-        html+='<div class="ind-mod-name">'+m.name+'</div>';
-        html+='<div class="ind-places">';
-        var lblCls=["l1","l2","l3","l4"];
-        [1,2,3,4].forEach(function(i){
-          var val=r["p"+i]||"";
-          html+='<div class="place-field">';
-          html+='<span class="place-label '+lblCls[i-1]+'">'+i+'&#186;</span>';
-          html+='<select class="place-select" id="ind_'+m.id+'_p'+i+'">';
-          html+='<option value="">-</option>';
-          html+=TURMAS.map(function(t){return '<option value="'+t+'"'+(val===t?' selected':'')+'>'+t+'</option>';}).join("");
-          html+='</select></div>';
-        });
-        html+='</div></div>';
-      }
+      });
+      html+='</div></div>';
     });
     html+='</div>';
   });
@@ -532,17 +511,12 @@ function buildAdminPanel(data){
 async function doSaveResults(){
   var results={};
   MODALITIES.forEach(function(m){
-    if(m.tipo==="col"){
-      var sel=document.getElementById("col_"+m.id);
-      if(sel){var pos=parseInt(sel.value)||0;if(pos>0)results[m.id]={pos:pos};}
-    } else {
-      var obj={};
-      [1,2,3,4].forEach(function(i){
-        var sel=document.getElementById("ind_"+m.id+"_p"+i);
-        if(sel&&sel.value) obj["p"+i]=sel.value;
-      });
-      if(Object.keys(obj).length>0) results[m.id]=obj;
-    }
+    var obj={};
+    [1,2,3,4].forEach(function(i){
+      var sel=document.getElementById("ind_"+m.id+"_p"+i);
+      if(sel&&sel.value) obj["p"+i]=sel.value;
+    });
+    if(Object.keys(obj).length>0) results[m.id]=obj;
   });
   try{
     await saveResultsCloud(results);
@@ -550,8 +524,9 @@ async function doSaveResults(){
     setTimeout(function(){document.getElementById("msg-ok").className="msg-ok";},3000);
     renderClassificacao(cachedResults);
   }catch(e){
+    document.getElementById("msg-err").textContent="✗ Erro ao salvar: "+e.message;
     document.getElementById("msg-err").className="msg-err show";
-    setTimeout(function(){document.getElementById("msg-err").className="msg-err";},3000);
+    setTimeout(function(){document.getElementById("msg-err").className="msg-err";},6000);
   }
 }
 
