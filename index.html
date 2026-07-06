@@ -509,16 +509,16 @@ function buildAdminPanel(data){
 }
 
 async function doSaveResults(){
-  var results={};
-  MODALITIES.forEach(function(m){
-    var obj={};
-    [1,2,3,4].forEach(function(i){
-      var sel=document.getElementById("ind_"+m.id+"_p"+i);
-      if(sel&&sel.value) obj["p"+i]=sel.value;
-    });
-    if(Object.keys(obj).length>0) results[m.id]=obj;
-  });
   try{
+    var results={};
+    MODALITIES.forEach(function(m){
+      var obj={};
+      [1,2,3,4].forEach(function(i){
+        var sel=document.getElementById("ind_"+m.id+"_p"+i);
+        if(sel&&sel.value) obj["p"+i]=sel.value;
+      });
+      if(Object.keys(obj).length>0) results[m.id]=obj;
+    });
     await saveResultsCloud(results);
     document.getElementById("msg-ok").className="msg-ok show";
     setTimeout(function(){document.getElementById("msg-ok").className="msg-ok";},3000);
@@ -526,7 +526,7 @@ async function doSaveResults(){
   }catch(e){
     document.getElementById("msg-err").textContent="✗ Erro ao salvar: "+e.message;
     document.getElementById("msg-err").className="msg-err show";
-    setTimeout(function(){document.getElementById("msg-err").className="msg-err";},6000);
+    setTimeout(function(){document.getElementById("msg-err").className="msg-err";},8000);
   }
 }
 
@@ -653,6 +653,14 @@ function switchTab(tab){
 }
 
 // ── INIT ──────────────────────────────────────────────────
+window.addEventListener("unhandledrejection",function(ev){
+  var el=document.getElementById("msg-err");
+  if(el){
+    el.textContent="✗ Erro inesperado: "+(ev.reason&&ev.reason.message?ev.reason.message:ev.reason);
+    el.className="msg-err show";
+  }
+});
+
 (async function(){
   ["agenda","todos","admin"].forEach(function(t){document.getElementById("view-"+t).style.display="none";});
   document.getElementById("student-view").style.display="none";
