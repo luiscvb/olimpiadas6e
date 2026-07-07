@@ -266,13 +266,10 @@ var TURMAS=["6A","6B","6C","6D","6E"];
 var ADMIN_PASS="6enc@ra2026";
 
 // ── STORAGE CONFIG ─────────────────────────────────────────
-// Leitura: direto do results.json no repo (público, sem token).
+// Leitura: results.json publicado pelo próprio site no Netlify (raw.githubusercontent.com
+// ignora a query string de cache-busting e fica até 5min desatualizado, então não usamos).
 // Escrita: via função serverless do Netlify, que guarda o token em segredo.
-var GH_OWNER="luiscvb";
-var GH_REPO="olimpiadas6e";
-var GH_BRANCH="main";
-var GH_FILE_PATH="results.json";
-var GH_RAW_URL="https://raw.githubusercontent.com/"+GH_OWNER+"/"+GH_REPO+"/"+GH_BRANCH+"/"+GH_FILE_PATH;
+var RESULTS_URL="/results.json";
 var SAVE_FN_URL="/.netlify/functions/save-results";
 
 // Modalities
@@ -328,7 +325,7 @@ var cachedResults=null;
 
 async function loadResultsCloud(){
   try{
-    var res=await fetch(GH_RAW_URL+"?t="+Date.now(),{cache:"no-store"});
+    var res=await fetch(RESULTS_URL+"?t="+Date.now(),{cache:"no-store"});
     cachedResults=res.ok?await res.json():{data:{},updated:null};
   }catch(e){
     cachedResults={data:{},updated:null};
