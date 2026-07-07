@@ -265,14 +265,15 @@ var ALL_EVENTS=[{"day": "sab", "time": "09:00", "emoji": "🧠", "desc": "Quiz (
 var TURMAS=["6A","6B","6C","6D","6E"];
 var ADMIN_PASS="6enc@ra2026";
 
-// ── GITHUB STORAGE CONFIG ──────────────────────────────────
+// ── STORAGE CONFIG ─────────────────────────────────────────
+// Leitura: direto do results.json no repo (público, sem token).
+// Escrita: via função serverless do Netlify, que guarda o token em segredo.
 var GH_OWNER="luiscvb";
 var GH_REPO="olimpiadas6e";
 var GH_BRANCH="main";
 var GH_FILE_PATH="results.json";
-var GH_TOKEN="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";
 var GH_RAW_URL="https://raw.githubusercontent.com/"+GH_OWNER+"/"+GH_REPO+"/"+GH_BRANCH+"/"+GH_FILE_PATH;
-var GH_API_URL="https://api.github.com/repos/"+GH_OWNER+"/"+GH_REPO+"/contents/"+GH_FILE_PATH;
+var SAVE_FN_URL="/.netlify/functions/save-results";
 
 // Modalities
 // COL: position of 6E (1st/2nd/3rd/4th) → 100/70/50/30
@@ -335,44 +336,16 @@ async function loadResultsCloud(){
   return cachedResults;
 }
 
-function b64EncodeUnicode(str){
-  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,function(_,p){
-    return String.fromCharCode(parseInt(p,16));
-  }));
-}
-
 async function saveResultsCloud(results){
-  var payload={data:results,updated:new Date().toLocaleString("pt-BR")};
-
-  var shaRes=await fetch(GH_API_URL,{
-    headers:{"Authorization":"Bearer "+GH_TOKEN,"Accept":"application/vnd.github+json"}
+  var res=await fetch(SAVE_FN_URL,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({password:ADMIN_PASS,results:results})
   });
-  if(!shaRes.ok){
-    var shaErr=await shaRes.json().catch(function(){return{};});
-    throw new Error("GET sha "+shaRes.status+": "+(shaErr.message||shaRes.statusText));
-  }
-  var shaData=await shaRes.json();
+  var out=await res.json().catch(function(){return{};});
+  if(!res.ok) throw new Error(out.error||("Erro "+res.status));
 
-  var putRes=await fetch(GH_API_URL,{
-    method:"PUT",
-    headers:{
-      "Authorization":"Bearer "+GH_TOKEN,
-      "Accept":"application/vnd.github+json",
-      "Content-Type":"application/json"
-    },
-    body:JSON.stringify({
-      message:"Atualiza classificação",
-      content:b64EncodeUnicode(JSON.stringify(payload,null,2)),
-      sha:shaData.sha,
-      branch:GH_BRANCH
-    })
-  });
-  if(!putRes.ok){
-    var putErr=await putRes.json().catch(function(){return{};});
-    throw new Error("PUT "+putRes.status+": "+(putErr.message||putRes.statusText));
-  }
-
-  cachedResults=payload;
+  cachedResults={data:results,updated:out.updated};
 }
 
 // ── SCORING ───────────────────────────────────────────────
