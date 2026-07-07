@@ -161,6 +161,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .col-select{padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:6px;background:var(--white);color:var(--text);font-family:inherit;min-width:80px}
 .col-select:focus{outline:none;border-color:var(--blue)}
 
+/* Pontuação numérica livre */
+.pts-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pts-field{display:flex;align-items:center;gap:6px}
+.pts-label{font-size:11px;font-weight:700;min-width:24px;color:var(--blue)}
+.pts-input{flex:1;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:6px;background:var(--white);color:var(--text);font-family:inherit}
+.pts-input:focus{outline:none;border-color:var(--blue)}
+
 .save-bar{position:sticky;bottom:0;background:var(--cream);padding:.75rem 1.2rem;border-top:1px solid var(--border);margin:0 -1.2rem;display:flex;flex-direction:column;gap:.5rem}
 .msg-ok{font-size:13px;color:#065f46;background:#d1fae5;border-radius:8px;padding:8px 12px;text-align:center;display:none}
 .msg-ok.show{display:block}
@@ -198,6 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
         <span class="lp-item">&#127941; Coletivos/Culturais: 1&#186;100 2&#186;70 3&#186;50 4&#186;30</span>
         <span class="lp-item">&#9971;&#65039; Individuais: 1&#186;40 2&#186;30 3&#186;20 4&#186;10</span>
         <span class="lp-item">&#127381; Bônus participação: +200</span>
+        <span class="lp-item">&#129656; Pontuação livre: valor digitado</span>
       </div>
       <div class="modal-breakdown">
         <div class="mb-title">Resultados do 6E por modalidade</div>
@@ -291,7 +299,9 @@ var MODALITIES=[
   {id:"QUIZ", name:"Quiz",                          tipo:"col", group:"Culturais"},
   {id:"ROB",  name:"Gincana Rob\u00f3tica",         tipo:"col", group:"Culturais"},
   {id:"SPELL",name:"Spelling Bee",                  tipo:"col", group:"Culturais"},
-  {id:"BAFO", name:"Bafo",                          tipo:"col", group:"Culturais"},
+  {id:"BAFOM",name:"Bafo Masculino",                 tipo:"col", group:"Culturais"},
+  {id:"BAFOF",name:"Bafo Feminino",                  tipo:"col", group:"Culturais"},
+  {id:"SANGUE",name:"Doação de Sangue",       tipo:"pts", group:"Culturais"},
   {id:"OLI",  name:"Olimpiarts",                    tipo:"col", group:"Culturais"},
   // INDIVIDUAIS — qual turma ficou em cada posição
   {id:"AT100M",   name:"100m Masculino",            tipo:"ind", group:"Atletismo Masculino"},
@@ -349,12 +359,23 @@ async function saveResultsCloud(results){
 // results.data structure:
 // COL: {BBM:{pos:2}, VBF:{pos:1}, ...}   → position of 6E
 // IND: {AT100M:{p1:"6A",p2:"6E",p3:"6C",p4:"6B"}, ...}  → turma per place
+// PTS: {SANGUE:{"6A":120,"6B":80,"6C":100,"6D":60,"6E":250}} → pontuação digitada
 function calcScores(data){
   var scores={};
   TURMAS.forEach(function(t){scores[t]=BONUS;});
   MODALITIES.forEach(function(m){
     var r=data[m.id];
     if(!r)return;
+
+    // PTS: pontuação numérica livre por turma, ex.: {"6A":120,"6E":250}
+    if(m.tipo==="pts"){
+      TURMAS.forEach(function(t){
+        var val=Number(r[t]||0);
+        if(!isNaN(val)) scores[t]+=val;
+      });
+      return;
+    }
+
     // r = {p1:"6A",p2:"6E",p3:"6C",p4:"6B"} → turma que ficou em cada colocação
     var PTS=m.tipo==="col"?PTS_COL:PTS_IND;
     [1,2,3,4].forEach(function(i){
@@ -413,6 +434,17 @@ function renderClassificacao(results){
   MODALITIES.forEach(function(m){
     var r=data[m.id];
     html+='<div class="mb-row"><span class="mb-mod">'+m.name+'</span>';
+
+    if(m.tipo==="pts"){
+      if(r&&r["6E"]!==undefined&&r["6E"]!==""){
+        html+='<div class="mb-chips"><span class="mb-chip c1">+'+Number(r["6E"]||0)+'</span></div>';
+      } else {
+        html+='<span class="mb-pending">pendente</span>';
+      }
+      html+='</div>';
+      return;
+    }
+
     var PTS=m.tipo==="col"?PTS_COL:PTS_IND;
     if(r){
       var chips="";
@@ -457,9 +489,23 @@ function buildAdminPanel(data){
     html+='<div class="admin-section"><div class="as-title">'+g+'</div>';
     groups[g].forEach(function(m){
       var r=data[m.id]||{};
-      // 4 dropdowns: qual turma ficou em 1º, 2º, 3º e 4º lugar
       html+='<div class="ind-row">';
       html+='<div class="ind-mod-name">'+m.name+'</div>';
+
+      if(m.tipo==="pts"){
+        html+='<div class="pts-grid">';
+        TURMAS.forEach(function(t){
+          var val=(r[t]!==undefined&&r[t]!==null)?r[t]:"";
+          html+='<div class="pts-field">';
+          html+='<span class="pts-label">'+t+'</span>';
+          html+='<input class="pts-input" id="pts_'+m.id+'_'+t+'" type="number" min="0" step="1" inputmode="numeric" value="'+val+'" placeholder="0">';
+          html+='</div>';
+        });
+        html+='</div></div>';
+        return;
+      }
+
+      // 4 dropdowns: qual turma ficou em 1º, 2º, 3º e 4º lugar
       html+='<div class="ind-places">';
       var lblCls=["l1","l2","l3","l4"];
       [1,2,3,4].forEach(function(i){
@@ -483,6 +529,16 @@ async function doSaveResults(){
     var results={};
     MODALITIES.forEach(function(m){
       var obj={};
+
+      if(m.tipo==="pts"){
+        TURMAS.forEach(function(t){
+          var inp=document.getElementById("pts_"+m.id+"_"+t);
+          if(inp&&inp.value!=="") obj[t]=Number(inp.value||0);
+        });
+        if(Object.keys(obj).length>0) results[m.id]=obj;
+        return;
+      }
+
       [1,2,3,4].forEach(function(i){
         var sel=document.getElementById("ind_"+m.id+"_p"+i);
         if(sel&&sel.value) obj["p"+i]=sel.value;
